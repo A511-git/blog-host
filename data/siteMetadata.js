@@ -118,7 +118,7 @@ const siteMetadata = {
   stickyNav: false,
 
   // === URLs & Branding ===
-  siteUrl: 'https://YOUR_DOMAIN_HERE', // change after custom domain
+  siteUrl: 'https://mohammad-atif.vercel.app',
   siteRepo: 'https://github.com/A511-git/blog-host',
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
   socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,

@@ -21,7 +21,7 @@ const generateRssItem = (config, post) => `
   </item>
 `
 
-const generateRss = (config, posts, page = 'feed.xml') => `
+const generateRss = (config, posts, page = 'rss.xml') => `
   <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
     <channel>
       <title>${escape(config.title)}</title>
