@@ -37,7 +37,7 @@ const generateRss = (config, posts, page = 'rss.xml') => `
   </rss>
 `
 
-async function generateRSS(config, allBlogs, page = 'feed.xml') {
+async function generateRSS(config, allBlogs, page = 'rss.xml') {
   const publishPosts = allBlogs.filter((post) => post.draft !== true)
   // RSS for blog post
   if (publishPosts.length > 0) {
