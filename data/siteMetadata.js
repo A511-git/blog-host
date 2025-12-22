@@ -137,7 +137,13 @@ const siteMetadata = {
   },
 
   // === Disabled Features (INTENTIONALLY OFF) ===
-  analytics: null,
+  analytics: {
+    plausibleAnalytics: null,
+    umamiAnalytics: null,
+    simpleAnalytics: null,
+    posthogAnalytics: null,
+    googleAnalytics: null,
+  },
   newsletter: null,
   comments: null,
 }
