@@ -1,0 +1,185 @@
+---
+title: PostgreSQL Primary Keys: Why Your UUID Choice Matters
+date: 2025-12-23
+summary: How time-based UUIDs help PostgreSQL B-Tree indexes achieve better insert performance, range queries, and predictable pagination.
+tags:
+  - postgresql
+  - database-indexing
+  - performance
+  - backend
+draft: false
+---
+
+<h2>Before diving in</h2>
+
+<p>So before diving into the topic there are some base information that we need to be aware of.</p>
+
+<h2>1. PostgreSQL indexes (high level)</h2>
+
+<p>
+  PostgreSQL has various types of indexes and different indexes have different strengths and
+  weaknesses. PostgreSQL uses <strong>B-Tree index</strong> for indexing the primary key.
+</p>
+
+<p>
+  <strong>Important:</strong> PRIMARY KEY and UNIQUE constraints create an index by default.
+</p>
+
+<h2>2. What is a B-Tree?</h2>
+
+<p>
+  The term “B-Tree” is short for “balanced tree” indicating that the distance between each node and
+  the root is consistent across all levels. Furthermore, the root and its parent nodes can have more
+  than two children, which effectively minimizes the depth of the tree, enhancing search efficiency.
+</p>
+
+<p>Let’s see the main aspects about B-Trees:</p>
+
+<h3>Main characteristics</h3>
+
+<ul>
+  <li>
+    <strong>Node Flexibility:</strong>
+    Nodes can have more than two children, typically varying from a minimum of two to a maximum
+    defined by the tree order (M).
+  </li>
+  <li>
+    <strong>Height Management:</strong>
+    Automatically adjusts to maintain a height of logM N, optimizing search operations.
+  </li>
+  <li>
+    <strong>Sorting Order:</strong>
+    Maintains data in sorted order, ensuring the smallest values are on the left and the largest on
+    the right.
+  </li>
+  <li>
+    <strong>Uniformity and Efficiency:</strong>
+    All leaf nodes are at the same level to ensure efficiency and consistency, and there are no
+    empty subtrees above the leaf nodes.
+  </li>
+</ul>
+
+<h3>What it is best at</h3>
+
+<ul>
+  <li>Totally ordered data</li>
+  <li>Equality, range, sorting</li>
+</ul>
+
+<h3>Advantages</h3>
+
+<ul>
+  <li>Supports =, &lt;, &lt;=, &gt;, &gt;=</li>
+  <li>Supports ORDER BY natively</li>
+  <li>Supports UNIQUE / PRIMARY KEY</li>
+  <li>Supports multi-column indexes</li>
+  <li>Can do index-only scans</li>
+  <li>Backward scan supported</li>
+  <li>Very stable performance</li>
+  <li>Balanced tree → predictable depth</li>
+</ul>
+
+<h3>Disadvantages</h3>
+
+<ul>
+  <li>Inefficient for:</li>
+  <ul>
+    <li>Full-text search</li>
+    <li>Arrays</li>
+    <li>JSON path queries</li>
+    <li>Geometric data</li>
+  </ul>
+  <li>Not useful for highly unselective columns (e.g. boolean)</li>
+</ul>
+
+<h3>Performance characteristics</h3>
+
+<ul>
+  <li>
+    <strong>Lookup:</strong> O(log N)
+  </li>
+  <li>
+    <strong>Range scan:</strong> extremely efficient
+  </li>
+  <li>
+    <strong>Insert cost:</strong> moderate (page splits)
+  </li>
+  <li>
+    <strong>Update cost:</strong> moderate
+  </li>
+  <li>
+    <strong>Storage:</strong> medium
+  </li>
+</ul>
+
+<h3>Typical use cases</h3>
+
+<ul>
+  <li>Primary keys</li>
+  <li>Foreign keys</li>
+  <li>Dates &amp; timestamps</li>
+  <li>Numeric ranges</li>
+  <li>ORDER BY + LIMIT queries</li>
+  <li>Pagination</li>
+</ul>
+
+<h2>Important observation</h2>
+
+<p>
+  Notice any pattern — if we somehow get data that is already sorted we could use that to our
+  advantage as we could predict how the data would be stored thus, performing quick lookups along
+  with other features such as equality, range, and other discussed above.
+</p>
+
+<p>
+  But at the same time if the data stored has no correlation making these other important
+  functionalities go to waste.
+</p>
+
+<h2>3. Types of unique identifiers and their features</h2>
+
+<p>
+  <img
+    src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/2spme0lxuzhgdwh8h3z0.png"
+    alt="Types of unique identifiers and their features"
+  />
+</p>
+
+<p>
+  So if we use a time based UUID we can still avoid collision while leveraging full potential of
+  B-Tree indexing.
+</p>
+
+<p>
+  Since every newly created UUID would be greater than the previous UUID it would be stored in the
+  rightmost node of the tree which PostgreSQL optimizes for us.
+</p>
+
+<h2>What changes in practice?</h2>
+
+<p>
+  Now for lookups both of them would give the result in nearly same time with nearly same index size
+  but the magic happens next.
+</p>
+
+<ul>
+  <li>
+    Search object created at a particular day and time from index without using another index on
+    createdAt key.
+  </li>
+  <li>If we need to debloat our data set due to storage cost we can even remove createdAt key.</li>
+  <li>Search objects with time based range.</li>
+  <li>Since all new UUIDs are inserted in rightmost node, insert cost is reduced.</li>
+  <li>Improved VACUUM and bloat behavior.</li>
+  <li>More predictable pagination.</li>
+</ul>
+
+<p>When IDs are time-ordered:</p>
+
+<pre>
+  <code>WHERE id &gt; last_seen_id</code>
+</pre>
+
+<h2>Closing thought</h2>
+
+<p>In simpler terms time based UUIDs transforms a liability into a useful performance commodity.</p>
