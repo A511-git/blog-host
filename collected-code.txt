@@ -1,0 +1,2141 @@
+
+================================================================================
+FILE: app\about\page.tsx
+================================================================================
+import { Authors, allAuthors } from 'contentlayer/generated'
+import { MDXLayoutRenderer } from 'pliny/mdx-components'
+import AuthorLayout from '@/layouts/AuthorLayout'
+import { coreContent } from 'pliny/utils/contentlayer'
+import { genPageMetadata } from 'app/seo'
+
+export const metadata = genPageMetadata({ title: 'About' })
+
+export default function Page() {
+  const author = allAuthors.find((p) => p.slug === 'default') as Authors
+  const mainContent = coreContent(author)
+
+  return (
+    <>
+      <AuthorLayout content={mainContent}>
+        <MDXLayoutRenderer code={author.body.code} />
+      </AuthorLayout>
+    </>
+  )
+}
+
+
+================================================================================
+FILE: app\api\newsletter\ex-route.ts
+================================================================================
+// import { NewsletterAPI } from 'pliny/newsletter'
+// import siteMetadata from '@/data/siteMetadata'
+
+// export const dynamic = 'force-static'
+
+// const handler = NewsletterAPI({
+//   // @ts-ignore
+//   provider: siteMetadata.newsletter.provider,
+// })
+
+// export { handler as GET, handler as POST }
+
+
+================================================================================
+FILE: app\blog\page\[page]\page.tsx
+================================================================================
+import ListLayout from '@/layouts/ListLayoutWithTags'
+import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer'
+import { allBlogs } from 'contentlayer/generated'
+import { notFound } from 'next/navigation'
+
+const POSTS_PER_PAGE = 5
+
+export const generateStaticParams = async () => {
+  const totalPages = Math.ceil(allBlogs.length / POSTS_PER_PAGE)
+  const paths = Array.from({ length: totalPages }, (_, i) => ({ page: (i + 1).toString() }))
+
+  return paths
+}
+
+export default async function Page(props: { params: Promise<{ page: string }> }) {
+  const params = await props.params
+  const posts = allCoreContent(sortPosts(allBlogs))
+  const pageNumber = parseInt(params.page as string)
+  const totalPages = Math.ceil(posts.length / POSTS_PER_PAGE)
+
+  // Return 404 for invalid page numbers or empty pages
+  if (pageNumber <= 0 || pageNumber > totalPages || isNaN(pageNumber)) {
+    return notFound()
+  }
+  const initialDisplayPosts = posts.slice(
+    POSTS_PER_PAGE * (pageNumber - 1),
+    POSTS_PER_PAGE * pageNumber
+  )
+  const pagination = {
+    currentPage: pageNumber,
+    totalPages: totalPages,
+  }
+
+  return (
+    <ListLayout
+      posts={posts}
+      initialDisplayPosts={initialDisplayPosts}
+      pagination={pagination}
+      title="All Posts"
+    />
+  )
+}
+
+
+================================================================================
+FILE: app\blog\page.tsx
+================================================================================
+import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer'
+import { allBlogs } from 'contentlayer/generated'
+import { genPageMetadata } from 'app/seo'
+import ListLayout from '@/layouts/ListLayoutWithTags'
+
+const POSTS_PER_PAGE = 5
+
+export const metadata = genPageMetadata({ title: 'Blog' })
+
+export default async function BlogPage(props: { searchParams: Promise<{ page: string }> }) {
+  const posts = allCoreContent(sortPosts(allBlogs))
+  const pageNumber = 1
+  const totalPages = Math.ceil(posts.length / POSTS_PER_PAGE)
+  const initialDisplayPosts = posts.slice(0, POSTS_PER_PAGE * pageNumber)
+  const pagination = {
+    currentPage: pageNumber,
+    totalPages: totalPages,
+  }
+
+  return (
+    <ListLayout
+      posts={posts}
+      initialDisplayPosts={initialDisplayPosts}
+      pagination={pagination}
+      title="All Posts"
+    />
+  )
+}
+
+
+================================================================================
+FILE: app\blog\[...slug]\page.tsx
+================================================================================
+import 'css/prism.css'
+import 'katex/dist/katex.css'
+
+import PageTitle from '@/components/PageTitle'
+import { components } from '@/components/MDXComponents'
+import { MDXLayoutRenderer } from 'pliny/mdx-components'
+import { sortPosts, coreContent, allCoreContent } from 'pliny/utils/contentlayer'
+import { allBlogs, allAuthors } from 'contentlayer/generated'
+import type { Authors, Blog } from 'contentlayer/generated'
+import PostSimple from '@/layouts/PostSimple'
+import PostLayout from '@/layouts/PostLayout'
+import PostBanner from '@/layouts/PostBanner'
+import { Metadata } from 'next'
+import siteMetadata from '@/data/siteMetadata'
+import { notFound } from 'next/navigation'
+
+const defaultLayout = 'PostLayout'
+const layouts = {
+  PostSimple,
+  PostLayout,
+  PostBanner,
+}
+
+export async function generateMetadata(props: {
+  params: Promise<{ slug: string[] }>
+}): Promise<Metadata | undefined> {
+  const params = await props.params
+  const slug = decodeURI(params.slug.join('/'))
+  const post = allBlogs.find((p) => p.slug === slug)
+  const authorList = post?.authors || ['default']
+  const authorDetails = authorList.map((author) => {
+    const authorResults = allAuthors.find((p) => p.slug === author)
+    return coreContent(authorResults as Authors)
+  })
+  if (!post) {
+    return
+  }
+
+  const publishedAt = new Date(post.date).toISOString()
+  const modifiedAt = new Date(post.lastmod || post.date).toISOString()
+  const authors = authorDetails.map((author) => author.name)
+  let imageList = [siteMetadata.socialBanner]
+  if (post.images) {
+    imageList = typeof post.images === 'string' ? [post.images] : post.images
+  }
+  const ogImages = imageList.map((img) => {
+    return {
+      url: img && img.includes('http') ? img : siteMetadata.siteUrl + img,
+    }
+  })
+
+  return {
+    title: post.title,
+    description: post.summary,
+    openGraph: {
+      title: post.title,
+      description: post.summary,
+      siteName: siteMetadata.title,
+      locale: 'en_US',
+      type: 'article',
+      publishedTime: publishedAt,
+      modifiedTime: modifiedAt,
+      url: './',
+      images: ogImages,
+      authors: authors.length > 0 ? authors : [siteMetadata.author],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.title,
+      description: post.summary,
+      images: imageList,
+    },
+  }
+}
+
+export const generateStaticParams = async () => {
+  return allBlogs.map((p) => ({ slug: p.slug.split('/').map((name) => decodeURI(name)) }))
+}
+
+export default async function Page(props: { params: Promise<{ slug: string[] }> }) {
+  const params = await props.params
+  const slug = decodeURI(params.slug.join('/'))
+  // Filter out drafts in production
+  const sortedCoreContents = allCoreContent(sortPosts(allBlogs))
+  const postIndex = sortedCoreContents.findIndex((p) => p.slug === slug)
+  if (postIndex === -1) {
+    return notFound()
+  }
+
+  const prev = sortedCoreContents[postIndex + 1]
+  const next = sortedCoreContents[postIndex - 1]
+  const post = allBlogs.find((p) => p.slug === slug) as Blog
+  const authorList = post?.authors || ['default']
+  const authorDetails = authorList.map((author) => {
+    const authorResults = allAuthors.find((p) => p.slug === author)
+    return coreContent(authorResults as Authors)
+  })
+  const mainContent = coreContent(post)
+  const jsonLd = post.structuredData
+  jsonLd['author'] = authorDetails.map((author) => {
+    return {
+      '@type': 'Person',
+      name: author.name,
+    }
+  })
+
+  const Layout = layouts[post.layout || defaultLayout]
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <Layout content={mainContent} authorDetails={authorDetails} next={next} prev={prev}>
+        <MDXLayoutRenderer code={post.body.code} components={components} toc={post.toc} />
+      </Layout>
+    </>
+  )
+}
+
+
+================================================================================
+FILE: app\layout.tsx
+================================================================================
+import 'css/tailwind.css'
+import 'pliny/search/algolia.css'
+import 'remark-github-blockquote-alert/alert.css'
+
+import { Space_Grotesk } from 'next/font/google'
+import { Analytics, AnalyticsConfig } from 'pliny/analytics'
+import { SearchProvider, SearchConfig } from 'pliny/search'
+import Header from '@/components/Header'
+import SectionContainer from '@/components/SectionContainer'
+import Footer from '@/components/Footer'
+import siteMetadata from '@/data/siteMetadata'
+import { ThemeProviders } from './theme-providers'
+import { Metadata } from 'next'
+
+const space_grotesk = Space_Grotesk({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-space-grotesk',
+})
+
+export const metadata: Metadata = {
+  metadataBase: new URL(siteMetadata.siteUrl),
+  title: {
+    default: siteMetadata.title,
+    template: `%s | ${siteMetadata.title}`,
+  },
+  description: siteMetadata.description,
+  openGraph: {
+    title: siteMetadata.title,
+    description: siteMetadata.description,
+    url: './',
+    siteName: siteMetadata.title,
+    images: [siteMetadata.socialBanner],
+    locale: 'en_US',
+    type: 'website',
+  },
+  alternates: {
+    canonical: './',
+    types: {
+      'application/rss+xml': `${siteMetadata.siteUrl}/feed.xml`,
+    },
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  twitter: {
+    title: siteMetadata.title,
+    card: 'summary_large_image',
+    images: [siteMetadata.socialBanner],
+  },
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const basePath = process.env.BASE_PATH || ''
+
+  return (
+    <html
+      lang={siteMetadata.language}
+      className={`${space_grotesk.variable} scroll-smooth`}
+      suppressHydrationWarning
+    >
+      <link
+        rel="apple-touch-icon"
+        sizes="76x76"
+        href={`${basePath}/static/favicons/apple-touch-icon.png`}
+      />
+      <link
+        rel="icon"
+        type="image/png"
+        sizes="32x32"
+        href={`${basePath}/static/favicons/favicon-32x32.png`}
+      />
+      <link
+        rel="icon"
+        type="image/png"
+        sizes="16x16"
+        href={`${basePath}/static/favicons/favicon-16x16.png`}
+      />
+      <link rel="manifest" href={`${basePath}/static/favicons/site.webmanifest`} />
+      <link
+        rel="mask-icon"
+        href={`${basePath}/static/favicons/safari-pinned-tab.svg`}
+        color="#5bbad5"
+      />
+      <meta name="msapplication-TileColor" content="#000000" />
+      <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff" />
+      <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000" />
+      <link rel="alternate" type="application/rss+xml" href={`${basePath}/feed.xml`} />
+      <body className="bg-white pl-[calc(100vw-100%)] text-black antialiased dark:bg-gray-950 dark:text-white">
+        <ThemeProviders>
+          <Analytics analyticsConfig={siteMetadata.analytics as AnalyticsConfig} />
+          <SectionContainer>
+            <SearchProvider searchConfig={siteMetadata.search as SearchConfig}>
+              <Header />
+              <main className="mb-auto">{children}</main>
+            </SearchProvider>
+            <Footer />
+          </SectionContainer>
+        </ThemeProviders>
+      </body>
+    </html>
+  )
+}
+
+
+================================================================================
+FILE: app\Main.tsx
+================================================================================
+import Link from '@/components/Link'
+import Tag from '@/components/Tag'
+import siteMetadata from '@/data/siteMetadata'
+import { formatDate } from 'pliny/utils/formatDate'
+import NewsletterForm from 'pliny/ui/NewsletterForm'
+
+const MAX_DISPLAY = 5
+
+export default function Home({ posts }) {
+  return (
+    <>
+      <div className="divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="space-y-2 pt-6 pb-8 md:space-y-5">
+          <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:text-4xl sm:leading-10 md:text-6xl md:leading-14 dark:text-gray-100">
+            Latest
+          </h1>
+          <p className="text-lg leading-7 text-gray-500 dark:text-gray-400">
+            {siteMetadata.description}
+          </p>
+        </div>
+        <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+          {!posts.length && 'No posts found.'}
+          {posts.slice(0, MAX_DISPLAY).map((post) => {
+            const { slug, date, title, summary, tags } = post
+            return (
+              <li key={slug} className="py-12">
+                <article>
+                  <div className="space-y-2 xl:grid xl:grid-cols-4 xl:items-baseline xl:space-y-0">
+                    <dl>
+                      <dt className="sr-only">Published on</dt>
+                      <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
+                        <time dateTime={date}>{formatDate(date, siteMetadata.locale)}</time>
+                      </dd>
+                    </dl>
+                    <div className="space-y-5 xl:col-span-3">
+                      <div className="space-y-6">
+                        <div>
+                          <h2 className="text-2xl leading-8 font-bold tracking-tight">
+                            <Link
+                              href={`/blog/${slug}`}
+                              className="text-gray-900 dark:text-gray-100"
+                            >
+                              {title}
+                            </Link>
+                          </h2>
+                          <div className="flex flex-wrap">
+                            {tags.map((tag) => (
+                              <Tag key={tag} text={tag} />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="prose max-w-none text-gray-500 dark:text-gray-400">
+                          {summary}
+                        </div>
+                      </div>
+                      <div className="text-base leading-6 font-medium">
+                        <Link
+                          href={`/blog/${slug}`}
+                          className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                          aria-label={`Read more: "${title}"`}
+                        >
+                          Read more &rarr;
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+      {posts.length > MAX_DISPLAY && (
+        <div className="flex justify-end text-base leading-6 font-medium">
+          <Link
+            href="/blog"
+            className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+            aria-label="All posts"
+          >
+            All Posts &rarr;
+          </Link>
+        </div>
+      )}
+      {siteMetadata.newsletter?.provider && (
+        <div className="flex items-center justify-center pt-4">
+          <NewsletterForm />
+        </div>
+      )}
+    </>
+  )
+}
+
+
+================================================================================
+FILE: app\not-found.tsx
+================================================================================
+import Link from '@/components/Link'
+
+export default function NotFound() {
+  return (
+    <div className="flex flex-col items-start justify-start md:mt-24 md:flex-row md:items-center md:justify-center md:space-x-6">
+      <div className="space-x-2 pt-6 pb-8 md:space-y-5">
+        <h1 className="text-6xl leading-9 font-extrabold tracking-tight text-gray-900 md:border-r-2 md:px-6 md:text-8xl md:leading-14 dark:text-gray-100">
+          404
+        </h1>
+      </div>
+      <div className="max-w-md">
+        <p className="mb-4 text-xl leading-normal font-bold md:text-2xl">
+          Sorry we couldn't find this page.
+        </p>
+        <p className="mb-8">But dont worry, you can find plenty of other things on our homepage.</p>
+        <Link
+          href="/"
+          className="focus:shadow-outline-blue inline rounded-lg border border-transparent bg-blue-600 px-4 py-2 text-sm leading-5 font-medium text-white shadow-xs transition-colors duration-150 hover:bg-blue-700 focus:outline-hidden dark:hover:bg-blue-500"
+        >
+          Back to homepage
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+
+================================================================================
+FILE: app\page.tsx
+================================================================================
+import { sortPosts, allCoreContent } from 'pliny/utils/contentlayer'
+import { allBlogs } from 'contentlayer/generated'
+import Main from './Main'
+
+export default async function Page() {
+  const sortedPosts = sortPosts(allBlogs)
+  const posts = allCoreContent(sortedPosts)
+  return <Main posts={posts} />
+}
+
+
+================================================================================
+FILE: app\projects\page.tsx
+================================================================================
+import projectsData from '@/data/projectsData'
+import Card from '@/components/Card'
+import { genPageMetadata } from 'app/seo'
+
+export const metadata = genPageMetadata({ title: 'Projects' })
+
+export default function Projects() {
+  return (
+    <>
+      <div className="divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="space-y-2 pt-6 pb-8 md:space-y-5">
+          <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:text-4xl sm:leading-10 md:text-6xl md:leading-14 dark:text-gray-100">
+            Projects
+          </h1>
+          <p className="text-lg leading-7 text-gray-500 dark:text-gray-400">
+            Showcase your projects with a hero image (16 x 9)
+          </p>
+        </div>
+        <div className="container py-12">
+          <div className="-m-4 flex flex-wrap">
+            {projectsData.map((d) => (
+              <Card
+                key={d.title}
+                title={d.title}
+                description={d.description}
+                imgSrc={d.imgSrc}
+                href={d.href}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+================================================================================
+FILE: app\robots.ts
+================================================================================
+import { MetadataRoute } from 'next'
+import siteMetadata from '@/data/siteMetadata'
+
+export const dynamic = 'force-static'
+
+export default function robots(): MetadataRoute.Robots {
+  return {
+    rules: {
+      userAgent: '*',
+      allow: '/',
+    },
+    sitemap: `${siteMetadata.siteUrl}/sitemap.xml`,
+    host: siteMetadata.siteUrl,
+  }
+}
+
+
+================================================================================
+FILE: app\seo.tsx
+================================================================================
+import { Metadata } from 'next'
+import siteMetadata from '@/data/siteMetadata'
+
+interface PageSEOProps {
+  title: string
+  description?: string
+  image?: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any
+}
+
+export function genPageMetadata({ title, description, image, ...rest }: PageSEOProps): Metadata {
+  return {
+    title,
+    description: description || siteMetadata.description,
+    openGraph: {
+      title: `${title} | ${siteMetadata.title}`,
+      description: description || siteMetadata.description,
+      url: './',
+      siteName: siteMetadata.title,
+      images: image ? [image] : [siteMetadata.socialBanner],
+      locale: 'en_US',
+      type: 'website',
+    },
+    twitter: {
+      title: `${title} | ${siteMetadata.title}`,
+      card: 'summary_large_image',
+      images: image ? [image] : [siteMetadata.socialBanner],
+    },
+    ...rest,
+  }
+}
+
+
+================================================================================
+FILE: app\sitemap.ts
+================================================================================
+import { MetadataRoute } from 'next'
+import { allBlogs } from 'contentlayer/generated'
+import siteMetadata from '@/data/siteMetadata'
+
+export const dynamic = 'force-static'
+
+export default function sitemap(): MetadataRoute.Sitemap {
+  const siteUrl = siteMetadata.siteUrl
+
+  const blogRoutes = allBlogs
+    .filter((post) => !post.draft)
+    .map((post) => ({
+      url: `${siteUrl}/${post.path}`,
+      lastModified: post.lastmod || post.date,
+    }))
+
+  const routes = ['', 'blog', 'projects', 'tags'].map((route) => ({
+    url: `${siteUrl}/${route}`,
+    lastModified: new Date().toISOString().split('T')[0],
+  }))
+
+  return [...routes, ...blogRoutes]
+}
+
+
+================================================================================
+FILE: app\tag-data.json
+================================================================================
+{
+  "postgresql": 1,
+  "database-indexing": 1,
+  "performance": 1,
+  "backend": 1
+}
+
+
+================================================================================
+FILE: app\tags\page.tsx
+================================================================================
+import Link from '@/components/Link'
+import Tag from '@/components/Tag'
+import { slug } from 'github-slugger'
+import tagData from 'app/tag-data.json'
+import { genPageMetadata } from 'app/seo'
+
+export const metadata = genPageMetadata({ title: 'Tags', description: 'Things I blog about' })
+
+export default async function Page() {
+  const tagCounts = tagData as Record<string, number>
+  const tagKeys = Object.keys(tagCounts)
+  const sortedTags = tagKeys.sort((a, b) => tagCounts[b] - tagCounts[a])
+  return (
+    <>
+      <div className="flex flex-col items-start justify-start divide-y divide-gray-200 md:mt-24 md:flex-row md:items-center md:justify-center md:space-x-6 md:divide-y-0 dark:divide-gray-700">
+        <div className="space-x-2 pt-6 pb-8 md:space-y-5">
+          <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:text-4xl sm:leading-10 md:border-r-2 md:px-6 md:text-6xl md:leading-14 dark:text-gray-100">
+            Tags
+          </h1>
+        </div>
+        <div className="flex max-w-lg flex-wrap">
+          {tagKeys.length === 0 && 'No tags found.'}
+          {sortedTags.map((t) => {
+            return (
+              <div key={t} className="mt-2 mr-5 mb-2">
+                <Tag text={t} />
+                <Link
+                  href={`/tags/${slug(t)}`}
+                  className="-ml-2 text-sm font-semibold text-gray-600 uppercase dark:text-gray-300"
+                  aria-label={`View posts tagged ${t}`}
+                >
+                  {` (${tagCounts[t]})`}
+                </Link>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+================================================================================
+FILE: app\tags\[tag]\page\[page]\page.tsx
+================================================================================
+import { slug } from 'github-slugger'
+import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer'
+import ListLayout from '@/layouts/ListLayoutWithTags'
+import { allBlogs } from 'contentlayer/generated'
+import tagData from 'app/tag-data.json'
+import { notFound } from 'next/navigation'
+
+const POSTS_PER_PAGE = 5
+
+export const generateStaticParams = async () => {
+  const tagCounts = tagData as Record<string, number>
+  return Object.keys(tagCounts).flatMap((tag) => {
+    const postCount = tagCounts[tag]
+    const totalPages = Math.max(1, Math.ceil(postCount / POSTS_PER_PAGE))
+    return Array.from({ length: totalPages }, (_, i) => ({
+      tag: encodeURI(tag),
+      page: (i + 1).toString(),
+    }))
+  })
+}
+
+export default async function TagPage(props: { params: Promise<{ tag: string; page: string }> }) {
+  const params = await props.params
+  const tag = decodeURI(params.tag)
+  const title = tag[0].toUpperCase() + tag.split(' ').join('-').slice(1)
+  const pageNumber = parseInt(params.page)
+  const filteredPosts = allCoreContent(
+    sortPosts(allBlogs.filter((post) => post.tags && post.tags.map((t) => slug(t)).includes(tag)))
+  )
+  const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE)
+
+  // Return 404 for invalid page numbers or empty pages
+  if (pageNumber <= 0 || pageNumber > totalPages || isNaN(pageNumber)) {
+    return notFound()
+  }
+  const initialDisplayPosts = filteredPosts.slice(
+    POSTS_PER_PAGE * (pageNumber - 1),
+    POSTS_PER_PAGE * pageNumber
+  )
+  const pagination = {
+    currentPage: pageNumber,
+    totalPages: totalPages,
+  }
+
+  return (
+    <ListLayout
+      posts={filteredPosts}
+      initialDisplayPosts={initialDisplayPosts}
+      pagination={pagination}
+      title={title}
+    />
+  )
+}
+
+
+================================================================================
+FILE: app\tags\[tag]\page.tsx
+================================================================================
+import { slug } from 'github-slugger'
+import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer'
+import siteMetadata from '@/data/siteMetadata'
+import ListLayout from '@/layouts/ListLayoutWithTags'
+import { allBlogs } from 'contentlayer/generated'
+import tagData from 'app/tag-data.json'
+import { genPageMetadata } from 'app/seo'
+import { Metadata } from 'next'
+
+const POSTS_PER_PAGE = 5
+
+export async function generateMetadata(props: {
+  params: Promise<{ tag: string }>
+}): Promise<Metadata> {
+  const params = await props.params
+  const tag = decodeURI(params.tag)
+  return genPageMetadata({
+    title: tag,
+    description: `${siteMetadata.title} ${tag} tagged content`,
+    alternates: {
+      canonical: './',
+      types: {
+        'application/rss+xml': `${siteMetadata.siteUrl}/tags/${tag}/feed.xml`,
+      },
+    },
+  })
+}
+
+export const generateStaticParams = async () => {
+  const tagCounts = tagData as Record<string, number>
+  const tagKeys = Object.keys(tagCounts)
+  return tagKeys.map((tag) => ({
+    tag: encodeURI(tag),
+  }))
+}
+
+export default async function TagPage(props: { params: Promise<{ tag: string }> }) {
+  const params = await props.params
+  const tag = decodeURI(params.tag)
+  const title = tag[0].toUpperCase() + tag.split(' ').join('-').slice(1)
+  const filteredPosts = allCoreContent(
+    sortPosts(allBlogs.filter((post) => post.tags && post.tags.map((t) => slug(t)).includes(tag)))
+  )
+  const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE)
+  const initialDisplayPosts = filteredPosts.slice(0, POSTS_PER_PAGE)
+  const pagination = {
+    currentPage: 1,
+    totalPages: totalPages,
+  }
+
+  return (
+    <ListLayout
+      posts={filteredPosts}
+      initialDisplayPosts={initialDisplayPosts}
+      pagination={pagination}
+      title={title}
+    />
+  )
+}
+
+
+================================================================================
+FILE: app\theme-providers.tsx
+================================================================================
+'use client'
+
+import { ThemeProvider } from 'next-themes'
+import siteMetadata from '@/data/siteMetadata'
+
+export function ThemeProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider attribute="class" defaultTheme={siteMetadata.theme} enableSystem>
+      {children}
+    </ThemeProvider>
+  )
+}
+
+
+================================================================================
+FILE: data\authors\default.mdx
+================================================================================
+---
+name: Mohammad Atif
+avatar: /static/images/avatar.png
+occupation: Backend-Oriented Full-Stack Developer
+company: Open to Opportunities
+linkedin: https://www.linkedin.com/in/mohammad-atif-a511git
+---
+
+I am a backend-oriented full-stack developer focused on building **secure, scalable, and performance-aware systems**.
+
+My primary experience includes designing REST APIs, working with relational and NoSQL databases, optimizing queries and indexes, and structuring applications with clean, modular architecture. I pay close attention to data flow, validation, and failure handling, and I prefer solutions that are simple, explicit, and maintainable.
+
+This blog is where I document practical learnings around backend engineering — especially **PostgreSQL and MongoDB, databases, indexing strategies, system design concepts, and real-world trade-offs** encountered while building production-style systems.
+
+
+================================================================================
+FILE: data\blog\time-based-uuid-btree-indexing.mdx
+================================================================================
+---
+title: PostgreSQL Primary Keys-Why Your UUID Choice Matters
+date: 2025-12-23
+summary: How time-based UUIDs help PostgreSQL B-Tree indexes achieve better insert performance, range queries, and predictable pagination.
+tags:
+  - postgresql
+  - database-indexing
+  - performance
+  - backend
+draft: false
+devUrl: https://dev.to/mohammad-atif/postgresql-primary-keys-why-your-uuid-choice-matters
+---
+
+<h2>Before diving in</h2>
+
+<p>So before diving into the topic there are some base information that we need to be aware of.</p>
+
+<h2>1. PostgreSQL indexes</h2>
+
+<p>
+  PostgreSQL has various types of indexes and different indexes have different strengths and
+  weaknesses. PostgreSQL uses <strong>B-Tree index</strong> for indexing the primary key.
+</p>
+
+<p>
+  <strong>Important:</strong> PRIMARY KEY and UNIQUE constraints create an index by default.
+</p>
+
+<h2>2. What is a B-Tree?</h2>
+
+<p>
+  The term “B-Tree” is short for “balanced tree” indicating that the distance between each node and
+  the root is consistent across all levels. Furthermore, the root and its parent nodes can have more
+  than two children, which effectively minimizes the depth of the tree, enhancing search efficiency.
+</p>
+
+<p>Let’s see the main aspects about B-Trees:</p>
+
+<h3>Main characteristics</h3>
+
+<ul>
+  <li>
+    <strong>Node Flexibility:</strong>
+    Nodes can have more than two children, typically varying from a minimum of two to a maximum
+    defined by the tree order (M).
+  </li>
+  <li>
+    <strong>Height Management:</strong>
+    Automatically adjusts to maintain a height of logM N, optimizing search operations.
+  </li>
+  <li>
+    <strong>Sorting Order:</strong>
+    Maintains data in sorted order, ensuring the smallest values are on the left and the largest on
+    the right.
+  </li>
+  <li>
+    <strong>Uniformity and Efficiency:</strong>
+    All leaf nodes are at the same level to ensure efficiency and consistency, and there are no
+    empty subtrees above the leaf nodes.
+  </li>
+</ul>
+
+<h3>What it is best at</h3>
+
+<ul>
+  <li>Totally ordered data</li>
+  <li>Equality, range, sorting</li>
+</ul>
+
+<h3>Advantages</h3>
+
+<ul>
+  <li>Supports =, &lt;, &lt;=, &gt;, &gt;=</li>
+  <li>Supports ORDER BY natively</li>
+  <li>Supports UNIQUE / PRIMARY KEY</li>
+  <li>Supports multi-column indexes</li>
+  <li>Can do index-only scans</li>
+  <li>Backward scan supported</li>
+  <li>Very stable performance</li>
+  <li>Balanced tree → predictable depth</li>
+</ul>
+
+<h3>Disadvantages</h3>
+
+<ul>
+  <li>Inefficient for:</li>
+  <ul>
+    <li>Full-text search</li>
+    <li>Arrays</li>
+    <li>JSON path queries</li>
+    <li>Geometric data</li>
+  </ul>
+  <li>Not useful for highly unselective columns (e.g. boolean)</li>
+</ul>
+
+<h3>Performance characteristics</h3>
+
+<ul>
+  <li>
+    <strong>Lookup:</strong> O(log N)
+  </li>
+  <li>
+    <strong>Range scan:</strong> extremely efficient
+  </li>
+  <li>
+    <strong>Insert cost:</strong> moderate (page splits)
+  </li>
+  <li>
+    <strong>Update cost:</strong> moderate
+  </li>
+  <li>
+    <strong>Storage:</strong> medium
+  </li>
+</ul>
+
+<h3>Typical use cases</h3>
+
+<ul>
+  <li>Primary keys</li>
+  <li>Foreign keys</li>
+  <li>Dates &amp; timestamps</li>
+  <li>Numeric ranges</li>
+  <li>ORDER BY + LIMIT queries</li>
+  <li>Pagination</li>
+</ul>
+
+<h2>Important observation</h2>
+
+<p>
+  Notice any pattern — if we somehow get data that is already sorted we could use that to our
+  advantage as we could predict how the data would be stored thus, performing quick lookups along
+  with other features such as equality, range, and other discussed above.
+</p>
+
+<p>
+  But at the same time if the data stored has no correlation making these other important
+  functionalities go to waste.
+</p>
+
+<h2>3. Types of unique identifiers and their features</h2>
+
+<p>
+  <img
+    src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/2spme0lxuzhgdwh8h3z0.png"
+    alt="Types of unique identifiers and their features"
+  />
+</p>
+
+<p>
+  So if we use a time based UUID we can still avoid collision while leveraging full potential of
+  B-Tree indexing.
+</p>
+
+<p>
+  Since every newly created UUID would be greater than the previous UUID it would be stored in the
+  rightmost node of the tree which PostgreSQL optimizes for us.
+</p>
+
+<h2>What changes in practice?</h2>
+
+<p>
+  Now for lookups both of them would give the result in nearly same time with nearly same index size
+  but the magic happens next.
+</p>
+
+<ul>
+  <li>
+    Search object created at a particular day and time from index without using another index on
+    createdAt key.
+  </li>
+  <li>If we need to debloat our data set due to storage cost we can even remove createdAt key.</li>
+  <li>Search objects with time based range.</li>
+  <li>Since all new UUIDs are inserted in rightmost node, insert cost is reduced.</li>
+  <li>Improved VACUUM and bloat behavior.</li>
+  <li>More predictable pagination.</li>
+</ul>
+
+<p>When IDs are time-ordered:</p>
+
+<pre>
+  <code>WHERE id &gt; last_seen_id</code>
+</pre>
+
+<h2>Closing thought</h2>
+
+<p>In simpler terms time based UUIDs transforms a liability into a useful performance commodity.</p>
+
+
+================================================================================
+FILE: data\headerNavLinks.ts
+================================================================================
+const headerNavLinks = [
+  { href: '/', title: 'Home' },
+  { href: '/blog', title: 'Blog' },
+  { href: '/tags', title: 'Tags' },
+  { href: '/projects', title: 'Projects' },
+  { href: '/about', title: 'About' },
+]
+
+export default headerNavLinks
+
+
+================================================================================
+FILE: data\projectsData.ts
+================================================================================
+interface Project {
+  title: string
+  description: string
+  href?: string
+  imgSrc?: string
+}
+
+const projectsData: Project[] = []
+
+export default projectsData
+
+
+================================================================================
+FILE: data\siteMetadata.js
+================================================================================
+// /** @type {import("pliny/config").PlinyConfig } */
+// const siteMetadata = {
+//   title: 'A-511 Blogs Portfolio',
+//   author: 'Mohammad Atif A-511',
+//   headerTitle: '',
+//   description: 'A blog created with Next.js and Tailwind.css',
+//   language: 'en-us',
+//   theme: 'system', // system, dark or light
+//   siteUrl: 'https://tailwind-nextjs-starter-blog.vercel.app',
+//   siteRepo: 'https://github.com/timlrx/tailwind-nextjs-starter-blog',
+//   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
+//   socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,
+//   mastodon: 'https://mastodon.social/@mastodonuser',
+//   email: 'address@yoursite.com',
+//   github: 'https://github.com',
+//   x: 'https://twitter.com/x',
+//   // twitter: 'https://twitter.com/Twitter',
+//   facebook: 'https://facebook.com',
+//   youtube: 'https://youtube.com',
+//   linkedin: 'https://www.linkedin.com',
+//   threads: 'https://www.threads.net',
+//   instagram: 'https://www.instagram.com',
+//   medium: 'https://medium.com',
+//   bluesky: 'https://bsky.app/',
+//   locale: 'en-US',
+//   // set to true if you want a navbar fixed to the top
+//   stickyNav: false,
+//   analytics: {
+//     // If you want to use an analytics provider you have to add it to the
+//     // content security policy in the `next.config.js` file.
+//     // supports Plausible, Simple Analytics, Umami, Posthog or Google Analytics.
+//     umamiAnalytics: {
+//       // We use an env variable for this site to avoid other users cloning our analytics ID
+//       umamiWebsiteId: process.env.NEXT_UMAMI_ID, // e.g. 123e4567-e89b-12d3-a456-426614174000
+//       // You may also need to overwrite the script if you're storing data in the US - ex:
+//       // src: 'https://us.umami.is/script.js'
+//       // Remember to add 'us.umami.is' in `next.config.js` as a permitted domain for the CSP
+//     },
+//     // plausibleAnalytics: {
+//     //   plausibleDataDomain: '', // e.g. tailwind-nextjs-starter-blog.vercel.app
+//     // If you are hosting your own Plausible.
+//     //   src: '', // e.g. https://plausible.my-domain.com/js/script.js
+//     // },
+//     // simpleAnalytics: {},
+//     // posthogAnalytics: {
+//     //   posthogProjectApiKey: '', // e.g. 123e4567-e89b-12d3-a456-426614174000
+//     // },
+//     // googleAnalytics: {
+//     //   googleAnalyticsId: '', // e.g. G-XXXXXXX
+//     // },
+//   },
+//   newsletter: {
+//     // supports mailchimp, buttondown, convertkit, klaviyo, revue, emailoctopus, beehive
+//     // Please add your .env file and modify it according to your selection
+//     provider: 'buttondown',
+//   },
+//   comments: {
+//     // If you want to use an analytics provider you have to add it to the
+//     // content security policy in the `next.config.js` file.
+//     // Select a provider and use the environment variables associated to it
+//     // https://vercel.com/docs/environment-variables
+//     provider: 'giscus', // supported providers: giscus, utterances, disqus
+//     giscusConfig: {
+//       // Visit the link below, and follow the steps in the 'configuration' section
+//       // https://giscus.app/
+//       repo: process.env.NEXT_PUBLIC_GISCUS_REPO,
+//       repositoryId: process.env.NEXT_PUBLIC_GISCUS_REPOSITORY_ID,
+//       category: process.env.NEXT_PUBLIC_GISCUS_CATEGORY,
+//       categoryId: process.env.NEXT_PUBLIC_GISCUS_CATEGORY_ID,
+//       mapping: 'pathname', // supported options: pathname, url, title
+//       reactions: '1', // Emoji reactions: 1 = enable / 0 = disable
+//       // Send discussion metadata periodically to the parent window: 1 = enable / 0 = disable
+//       metadata: '0',
+//       // theme example: light, dark, dark_dimmed, dark_high_contrast
+//       // transparent_dark, preferred_color_scheme, custom
+//       theme: 'light',
+//       // theme when dark mode
+//       darkTheme: 'transparent_dark',
+//       // If the theme option above is set to 'custom`
+//       // please provide a link below to your custom theme css file.
+//       // example: https://giscus.app/themes/custom_example.css
+//       themeURL: '',
+//       // This corresponds to the `data-lang="en"` in giscus's configurations
+//       lang: 'en',
+//     },
+//   },
+//   search: {
+//     provider: 'kbar', // kbar or algolia
+//     kbarConfig: {
+//       searchDocumentsPath: `${process.env.BASE_PATH || ''}/search.json`, // path to load documents to search
+//     },
+//     // provider: 'algolia',
+//     // algoliaConfig: {
+//     //   // The application ID provided by Algolia
+//     //   appId: 'R2IYF7ETH7',
+//     //   // Public API key: it is safe to commit it
+//     //   apiKey: '599cec31baffa4868cae4e79f180729b',
+//     //   indexName: 'docsearch',
+//     // },
+//   },
+// }
+
+// module.exports = siteMetadata
+
+/** @type {import("pliny/config").PlinyConfig } */
+const siteMetadata = {
+  // === Core Identity ===
+  title: 'A-511 Blog',
+  author: 'Mohammad Atif (A-511)',
+  headerTitle: 'A-511',
+  description:
+    'Deep-dive technical blogs on backend engineering, PostgreSQL, databases, and system design.',
+  language: 'en-us',
+  locale: 'en-US',
+
+  // === Theme ===
+  theme: 'system', // system | dark | light
+  stickyNav: false,
+
+  // === URLs & Branding ===
+  siteUrl: 'https://mohammad-atif.vercel.app',
+  siteRepo: 'https://github.com/A511-git/blog-host',
+  siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
+  socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,
+
+  // === Contact / Professional Presence ===
+  email: 'mhdatif0511@gmail.com',
+  github: 'https://github.com/A511-git',
+  linkedin: 'https://www.linkedin.com/in/mohammad-atif-a511git',
+
+  // === Search (KEEP THIS) ===
+  search: {
+    provider: 'kbar',
+    kbarConfig: {
+      searchDocumentsPath: `${process.env.BASE_PATH || ''}/search.json`,
+    },
+  },
+
+  // === Disabled Features (INTENTIONALLY OFF) ===
+  analytics: {
+    plausibleAnalytics: null,
+    umamiAnalytics: null,
+    simpleAnalytics: null,
+    posthogAnalytics: null,
+    googleAnalytics: null,
+  },
+  newsletter: null,
+  comments: null,
+}
+
+module.exports = siteMetadata
+
+
+================================================================================
+FILE: faq\custom-mdx-component.md
+================================================================================
+# How can I add a custom MDX component?
+
+Here's an example on how to create a donut chart from Chart.js (assuming you already have the dependencies installed) and use it in MDX posts. First, create a new `DonutChart.tsx` component in `components`:
+
+```tsx
+'use client'
+
+import { Doughnut } from 'react-chartjs-2'
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
+
+ChartJS.register(ArcElement, Tooltip, Legend)
+
+const DonutChart = ({ data }) => {
+  return <Doughnut data={data} />
+}
+
+export default Doughnut
+```
+
+Since the underlying `Doughnut` component uses React hooks, we add the `'use client'` directive to specify that it is a client side component. Also, there is an existing issue which prevents named components from being used, so we need to export the component as the default export.
+
+Next, add the component to `MDXComponents.tsx`:
+
+```diff
+...
++ import DonutChart from './DonutChart'
+
+export const components: MDXComponents = {
+  Image,
+  TOCInline,
+  a: CustomLink,
+  pre: Pre,
++  DonutChart,
+  BlogNewsletterForm,
+}
+```
+
+You can now use the component in `.mdx` files:
+
+```mdx
+## Example Donut Chart
+
+export const data = {
+  labels: ['Red', 'Blue', 'Yellow'],
+  datasets: [
+    {
+      label: '# of Votes',
+      data: [12, 19, 3],
+      backgroundColor: [
+        'rgba(255, 99, 132, 0.2)',
+        'rgba(54, 162, 235, 0.2)',
+        'rgba(255, 206, 86, 0.2)',
+      ],
+      borderColor: ['rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)', 'rgba(255, 206, 86, 1)'],
+      borderWidth: 1,
+    },
+  ],
+}
+
+<DonutChart data={data} />
+```
+
+
+================================================================================
+FILE: faq\customize-kbar-search.md
+================================================================================
+# How can I customize the `kbar` search?
+
+Add a `SearchProvider` component such as the one shown below and use it in place of the default `SearchProvider` component in `app/layout.tsx`.
+
+`defaultActions` are the initial list of actions.
+
+`onSearchDocumentsLoad` is a callback function that is called when the documents specified by `searchDocumentsPath` are loaded. Set `searchDocumentsPath` to `false` to disable the dynamically loaded search feature.
+
+```tsx
+'use client'
+
+import { KBarSearchProvider } from 'pliny/search/KBar'
+import { useRouter } from 'next/navigation'
+import { CoreContent } from 'pliny/utils/contentlayer'
+import { Blog } from 'contentlayer/generated'
+
+export const SearchProvider = ({ children }) => {
+  const router = useRouter()
+  return (
+    <KBarSearchProvider
+      kbarConfig={{
+        searchDocumentsPath: 'search.json',
+        defaultActions: [
+          {
+            id: 'homepage',
+            name: 'Homepage',
+            keywords: '',
+            shortcut: ['h', 'h'],
+            section: 'Home',
+            perform: () => router.push('/'),
+          },
+          {
+            id: 'projects',
+            name: 'Projects',
+            keywords: '',
+            shortcut: ['p'],
+            section: 'Home',
+            perform: () => router.push('/projects'),
+          },
+        ],
+        onSearchDocumentsLoad(json) {
+          return json.map((post: CoreContent<Blog>) => ({
+            id: post.path,
+            name: post.title,
+            keywords: post?.summary || '',
+            section: 'Blog',
+            subtitle: post.tags.join(', '),
+            perform: () => router.push('/' + post.path),
+          }))
+        },
+      }}
+    >
+      {children}
+    </KBarSearchProvider>
+  )
+}
+```
+
+You can even choose to do a full text search over the entire generated blog content though this would come at the expense of a larger search index file by modifying the `createSearchIndex` function in `contentlayer.config.ts` to:
+
+```tsx
+function createSearchIndex(allBlogs) {
+  if (
+    siteMetadata?.search?.provider === 'kbar' &&
+    siteMetadata.search.kbarConfig.searchDocumentsPath
+  ) {
+    writeFileSync(
+      `public/${siteMetadata.search.kbarConfig.searchDocumentsPath}`,
+      JSON.stringify(sortPosts(allBlogs))
+    )
+    console.log('Local search index generated...')
+  }
+}
+```
+
+Note the change from `JSON.stringify(allCoreContent(sortPosts(allBlogs)))` to `JSON.stringify((sortPosts(allBlogs)))`.
+
+Next, in the modified `SearchProvider`, dump the raw content to the `keywords` field in the `onSearchDocumentsLoad` prop:
+
+```tsx
+onSearchDocumentsLoad(json) {
+  return json.map((post: Blog) => ({
+    id: post.path,
+    name: post.title,
+    keywords: post.body.raw,
+    section: 'Blog',
+    subtitle: post.tags.join(', '),
+    perform: () => router.push('/' + post.path),
+  }))
+}
+```
+
+
+================================================================================
+FILE: faq\deploy-with-docker.md
+================================================================================
+# Deploy with Docker
+
+Follow the [official Next.js repo docker build example and instructions](https://github.com/vercel/next.js/tree/canary/examples/with-docker) to deploy with docker. Copy the [`Dockerfile`](https://github.com/vercel/next.js/blob/canary/examples/with-docker/Dockerfile) into the root of the project and modify the `next.config.js` file:
+
+```js
+// next.config.js
+module.exports = {
+  // ... rest of the configuration.
+  output: 'standalone',
+}
+```
+
+You can now build the docker image and run it:
+
+```bash
+docker build -t nextjs-docker .
+docker run -p 3000:3000 nextjs-docker
+```
+
+Alternatively, to use docker compose, refer to the [docker compose repo](https://github.com/vercel/next.js/tree/canary/examples/with-docker-compose).
+
+
+================================================================================
+FILE: layouts\AuthorLayout.tsx
+================================================================================
+import { ReactNode } from 'react'
+import type { Authors } from 'contentlayer/generated'
+import SocialIcon from '@/components/social-icons'
+import Image from '@/components/Image'
+
+interface Props {
+  children: ReactNode
+  content: Omit<Authors, '_id' | '_raw' | 'body'>
+}
+
+export default function AuthorLayout({ children, content }: Props) {
+  const { name, avatar, occupation, company, email, twitter, bluesky, linkedin, github } = content
+
+  return (
+    <>
+      <div className="divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="space-y-2 pt-6 pb-8 md:space-y-5">
+          <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:text-4xl sm:leading-10 md:text-6xl md:leading-14 dark:text-gray-100">
+            About
+          </h1>
+        </div>
+        <div className="items-start space-y-2 xl:grid xl:grid-cols-3 xl:space-y-0 xl:gap-x-8">
+          <div className="flex flex-col items-center space-x-2 pt-8">
+            {avatar && (
+              <Image
+                src={avatar}
+                alt="avatar"
+                width={192}
+                height={192}
+                className="h-48 w-48 rounded-full"
+              />
+            )}
+            <h3 className="pt-4 pb-2 text-2xl leading-8 font-bold tracking-tight">{name}</h3>
+            <div className="text-gray-500 dark:text-gray-400">{occupation}</div>
+            <div className="text-gray-500 dark:text-gray-400">{company}</div>
+            <div className="flex space-x-3 pt-6">
+              <SocialIcon kind="mail" href={`mailto:${email}`} />
+              <SocialIcon kind="github" href={github} />
+              <SocialIcon kind="linkedin" href={linkedin} />
+              <SocialIcon kind="x" href={twitter} />
+              <SocialIcon kind="bluesky" href={bluesky} />
+            </div>
+          </div>
+          <div className="prose dark:prose-invert max-w-none pt-8 pb-8 xl:col-span-2">
+            {children}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+================================================================================
+FILE: layouts\ListLayout.tsx
+================================================================================
+'use client'
+
+import { useState } from 'react'
+import { usePathname } from 'next/navigation'
+import { formatDate } from 'pliny/utils/formatDate'
+import { CoreContent } from 'pliny/utils/contentlayer'
+import type { Blog } from 'contentlayer/generated'
+import Link from '@/components/Link'
+import Tag from '@/components/Tag'
+import siteMetadata from '@/data/siteMetadata'
+
+interface PaginationProps {
+  totalPages: number
+  currentPage: number
+}
+interface ListLayoutProps {
+  posts: CoreContent<Blog>[]
+  title: string
+  initialDisplayPosts?: CoreContent<Blog>[]
+  pagination?: PaginationProps
+}
+
+function Pagination({ totalPages, currentPage }: PaginationProps) {
+  const pathname = usePathname()
+  const segments = pathname.split('/')
+  const lastSegment = segments[segments.length - 1]
+  const basePath = pathname
+    .replace(/^\//, '') // Remove leading slash
+    .replace(/\/page\/\d+\/?$/, '') // Remove any trailing /page
+    .replace(/\/$/, '') // Remove trailing slash
+  const prevPage = currentPage - 1 > 0
+  const nextPage = currentPage + 1 <= totalPages
+
+  return (
+    <div className="space-y-2 pt-6 pb-8 md:space-y-5">
+      <nav className="flex justify-between">
+        {!prevPage && (
+          <button className="cursor-auto disabled:opacity-50" disabled={!prevPage}>
+            Previous
+          </button>
+        )}
+        {prevPage && (
+          <Link
+            href={currentPage - 1 === 1 ? `/${basePath}/` : `/${basePath}/page/${currentPage - 1}`}
+            rel="prev"
+          >
+            Previous
+          </Link>
+        )}
+        <span>
+          {currentPage} of {totalPages}
+        </span>
+        {!nextPage && (
+          <button className="cursor-auto disabled:opacity-50" disabled={!nextPage}>
+            Next
+          </button>
+        )}
+        {nextPage && (
+          <Link href={`/${basePath}/page/${currentPage + 1}`} rel="next">
+            Next
+          </Link>
+        )}
+      </nav>
+    </div>
+  )
+}
+
+export default function ListLayout({
+  posts,
+  title,
+  initialDisplayPosts = [],
+  pagination,
+}: ListLayoutProps) {
+  const [searchValue, setSearchValue] = useState('')
+  const filteredBlogPosts = posts.filter((post) => {
+    const searchContent = post.title + post.summary + post.tags?.join(' ')
+    return searchContent.toLowerCase().includes(searchValue.toLowerCase())
+  })
+
+  // If initialDisplayPosts exist, display it if no searchValue is specified
+  const displayPosts =
+    initialDisplayPosts.length > 0 && !searchValue ? initialDisplayPosts : filteredBlogPosts
+
+  return (
+    <>
+      <div className="divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="space-y-2 pt-6 pb-8 md:space-y-5">
+          <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:text-4xl sm:leading-10 md:text-6xl md:leading-14 dark:text-gray-100">
+            {title}
+          </h1>
+          <div className="relative max-w-lg">
+            <label>
+              <span className="sr-only">Search articles</span>
+              <input
+                aria-label="Search articles"
+                type="text"
+                onChange={(e) => setSearchValue(e.target.value)}
+                placeholder="Search articles"
+                className="focus:border-primary-500 focus:ring-primary-500 block w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 dark:border-gray-900 dark:bg-gray-800 dark:text-gray-100"
+              />
+            </label>
+            <svg
+              className="absolute top-3 right-3 h-5 w-5 text-gray-400 dark:text-gray-300"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+        </div>
+        <ul>
+          {!filteredBlogPosts.length && 'No posts found.'}
+          {displayPosts.map((post) => {
+            const { path, date, title, summary, tags } = post
+            return (
+              <li key={path} className="py-4">
+                <article className="space-y-2 xl:grid xl:grid-cols-4 xl:items-baseline xl:space-y-0">
+                  <dl>
+                    <dt className="sr-only">Published on</dt>
+                    <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
+                      <time dateTime={date}>{formatDate(date, siteMetadata.locale)}</time>
+                    </dd>
+                  </dl>
+                  <div className="space-y-3 xl:col-span-3">
+                    <div>
+                      <h3 className="text-2xl leading-8 font-bold tracking-tight">
+                        <Link href={`/${path}`} className="text-gray-900 dark:text-gray-100">
+                          {title}
+                        </Link>
+                      </h3>
+                      <div className="flex flex-wrap">
+                        {tags?.map((tag) => (
+                          <Tag key={tag} text={tag} />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="prose max-w-none text-gray-500 dark:text-gray-400">
+                      {summary}
+                    </div>
+                  </div>
+                </article>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+      {pagination && pagination.totalPages > 1 && !searchValue && (
+        <Pagination currentPage={pagination.currentPage} totalPages={pagination.totalPages} />
+      )}
+    </>
+  )
+}
+
+
+================================================================================
+FILE: layouts\ListLayoutWithTags.tsx
+================================================================================
+'use client'
+
+import { usePathname } from 'next/navigation'
+import { slug } from 'github-slugger'
+import { formatDate } from 'pliny/utils/formatDate'
+import { CoreContent } from 'pliny/utils/contentlayer'
+import type { Blog } from 'contentlayer/generated'
+import Link from '@/components/Link'
+import Tag from '@/components/Tag'
+import siteMetadata from '@/data/siteMetadata'
+import tagData from 'app/tag-data.json'
+
+interface PaginationProps {
+  totalPages: number
+  currentPage: number
+}
+interface ListLayoutProps {
+  posts: CoreContent<Blog>[]
+  title: string
+  initialDisplayPosts?: CoreContent<Blog>[]
+  pagination?: PaginationProps
+}
+
+function Pagination({ totalPages, currentPage }: PaginationProps) {
+  const pathname = usePathname()
+  const segments = pathname.split('/')
+  const lastSegment = segments[segments.length - 1]
+  const basePath = pathname
+    .replace(/^\//, '') // Remove leading slash
+    .replace(/\/page\/\d+\/?$/, '') // Remove any trailing /page
+    .replace(/\/$/, '') // Remove trailing slash
+  const prevPage = currentPage - 1 > 0
+  const nextPage = currentPage + 1 <= totalPages
+
+  return (
+    <div className="space-y-2 pt-6 pb-8 md:space-y-5">
+      <nav className="flex justify-between">
+        {!prevPage && (
+          <button className="cursor-auto disabled:opacity-50" disabled={!prevPage}>
+            Previous
+          </button>
+        )}
+        {prevPage && (
+          <Link
+            href={currentPage - 1 === 1 ? `/${basePath}/` : `/${basePath}/page/${currentPage - 1}`}
+            rel="prev"
+          >
+            Previous
+          </Link>
+        )}
+        <span>
+          {currentPage} of {totalPages}
+        </span>
+        {!nextPage && (
+          <button className="cursor-auto disabled:opacity-50" disabled={!nextPage}>
+            Next
+          </button>
+        )}
+        {nextPage && (
+          <Link href={`/${basePath}/page/${currentPage + 1}`} rel="next">
+            Next
+          </Link>
+        )}
+      </nav>
+    </div>
+  )
+}
+
+export default function ListLayoutWithTags({
+  posts,
+  title,
+  initialDisplayPosts = [],
+  pagination,
+}: ListLayoutProps) {
+  const pathname = usePathname()
+  const tagCounts = tagData as Record<string, number>
+  const tagKeys = Object.keys(tagCounts)
+  const sortedTags = tagKeys.sort((a, b) => tagCounts[b] - tagCounts[a])
+
+  const displayPosts = initialDisplayPosts.length > 0 ? initialDisplayPosts : posts
+
+  return (
+    <>
+      <div>
+        <div className="pt-6 pb-6">
+          <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:hidden sm:text-4xl sm:leading-10 md:text-6xl md:leading-14 dark:text-gray-100">
+            {title}
+          </h1>
+        </div>
+        <div className="flex sm:space-x-24">
+          <div className="hidden h-full max-h-screen max-w-[280px] min-w-[280px] flex-wrap overflow-auto rounded-sm bg-gray-50 pt-5 shadow-md sm:flex dark:bg-gray-900/70 dark:shadow-gray-800/40">
+            <div className="px-6 py-4">
+              {pathname.startsWith('/blog') ? (
+                <h3 className="text-primary-500 font-bold uppercase">All Posts</h3>
+              ) : (
+                <Link
+                  href={`/blog`}
+                  className="hover:text-primary-500 dark:hover:text-primary-500 font-bold text-gray-700 uppercase dark:text-gray-300"
+                >
+                  All Posts
+                </Link>
+              )}
+              <ul>
+                {sortedTags.map((t) => {
+                  return (
+                    <li key={t} className="my-3">
+                      {decodeURI(pathname.split('/tags/')[1]) === slug(t) ? (
+                        <h3 className="text-primary-500 inline px-3 py-2 text-sm font-bold uppercase">
+                          {`${t} (${tagCounts[t]})`}
+                        </h3>
+                      ) : (
+                        <Link
+                          href={`/tags/${slug(t)}`}
+                          className="hover:text-primary-500 dark:hover:text-primary-500 px-3 py-2 text-sm font-medium text-gray-500 uppercase dark:text-gray-300"
+                          aria-label={`View posts tagged ${t}`}
+                        >
+                          {`${t} (${tagCounts[t]})`}
+                        </Link>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </div>
+          <div>
+            <ul>
+              {displayPosts.map((post) => {
+                const { path, date, title, summary, tags } = post
+                return (
+                  <li key={path} className="py-5">
+                    <article className="flex flex-col space-y-2 xl:space-y-0">
+                      <dl>
+                        <dt className="sr-only">Published on</dt>
+                        <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
+                          <time dateTime={date} suppressHydrationWarning>
+                            {formatDate(date, siteMetadata.locale)}
+                          </time>
+                        </dd>
+                      </dl>
+                      <div className="space-y-3">
+                        <div>
+                          <h2 className="text-2xl leading-8 font-bold tracking-tight">
+                            <Link href={`/${path}`} className="text-gray-900 dark:text-gray-100">
+                              {title}
+                            </Link>
+                          </h2>
+                          <div className="flex flex-wrap">
+                            {tags?.map((tag) => (
+                              <Tag key={tag} text={tag} />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="prose max-w-none text-gray-500 dark:text-gray-400">
+                          {summary}
+                        </div>
+                      </div>
+                    </article>
+                  </li>
+                )
+              })}
+            </ul>
+            {pagination && pagination.totalPages > 1 && (
+              <Pagination currentPage={pagination.currentPage} totalPages={pagination.totalPages} />
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+================================================================================
+FILE: layouts\PostBanner.tsx
+================================================================================
+import { ReactNode } from 'react'
+import Image from '@/components/Image'
+import Bleed from 'pliny/ui/Bleed'
+import { CoreContent } from 'pliny/utils/contentlayer'
+import type { Blog } from 'contentlayer/generated'
+import Comments from '@/components/Comments'
+import Link from '@/components/Link'
+import PageTitle from '@/components/PageTitle'
+import SectionContainer from '@/components/SectionContainer'
+import siteMetadata from '@/data/siteMetadata'
+import ScrollTopAndComment from '@/components/ScrollTopAndComment'
+
+interface LayoutProps {
+  content: CoreContent<Blog>
+  children: ReactNode
+  next?: { path: string; title: string }
+  prev?: { path: string; title: string }
+}
+
+export default function PostMinimal({ content, next, prev, children }: LayoutProps) {
+  const { slug, title, images } = content
+  const displayImage =
+    images && images.length > 0 ? images[0] : 'https://picsum.photos/seed/picsum/800/400'
+
+  return (
+    <SectionContainer>
+      <ScrollTopAndComment />
+      <article>
+        <div>
+          <div className="space-y-1 pb-10 text-center dark:border-gray-700">
+            <div className="w-full">
+              <Bleed>
+                <div className="relative aspect-2/1 w-full">
+                  <Image src={displayImage} alt={title} fill className="object-cover" />
+                </div>
+              </Bleed>
+            </div>
+            <div className="relative pt-10">
+              <PageTitle>{title}</PageTitle>
+            </div>
+          </div>
+          <div className="prose dark:prose-invert max-w-none py-4">{children}</div>
+          {siteMetadata.comments && (
+            <div className="pt-6 pb-6 text-center text-gray-700 dark:text-gray-300" id="comment">
+              <Comments slug={slug} />
+            </div>
+          )}
+          <footer>
+            <div className="flex flex-col text-sm font-medium sm:flex-row sm:justify-between sm:text-base">
+              {prev && prev.path && (
+                <div className="pt-4 xl:pt-8">
+                  <Link
+                    href={`/${prev.path}`}
+                    className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                    aria-label={`Previous post: ${prev.title}`}
+                  >
+                    &larr; {prev.title}
+                  </Link>
+                </div>
+              )}
+              {next && next.path && (
+                <div className="pt-4 xl:pt-8">
+                  <Link
+                    href={`/${next.path}`}
+                    className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                    aria-label={`Next post: ${next.title}`}
+                  >
+                    {next.title} &rarr;
+                  </Link>
+                </div>
+              )}
+            </div>
+          </footer>
+        </div>
+      </article>
+    </SectionContainer>
+  )
+}
+
+
+================================================================================
+FILE: layouts\PostLayout.tsx
+================================================================================
+import { ReactNode } from 'react'
+import { CoreContent } from 'pliny/utils/contentlayer'
+import type { Blog, Authors } from 'contentlayer/generated'
+import Comments from '@/components/Comments'
+import Link from '@/components/Link'
+import PageTitle from '@/components/PageTitle'
+import SectionContainer from '@/components/SectionContainer'
+import Image from '@/components/Image'
+import Tag from '@/components/Tag'
+import siteMetadata from '@/data/siteMetadata'
+import ScrollTopAndComment from '@/components/ScrollTopAndComment'
+
+const postDateTemplate: Intl.DateTimeFormatOptions = {
+  weekday: 'long',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+}
+
+interface LayoutProps {
+  content: CoreContent<Blog>
+  authorDetails: CoreContent<Authors>[]
+  next?: { path: string; title: string }
+  prev?: { path: string; title: string }
+  children: ReactNode
+}
+
+export default function PostLayout({ content, authorDetails, next, prev, children }: LayoutProps) {
+  const { path, slug, date, title, tags, devUrl } = content
+  const basePath = path.split('/')[0]
+
+  return (
+    <SectionContainer>
+      <ScrollTopAndComment />
+      <article>
+        <div className="xl:divide-y xl:divide-gray-200 xl:dark:divide-gray-700">
+          <header className="pt-6 xl:pb-6">
+            <div className="space-y-1 text-center">
+              <dl className="space-y-10">
+                <div>
+                  <dt className="sr-only">Published on</dt>
+                  <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
+                    <time dateTime={date}>
+                      {new Date(date).toLocaleDateString(siteMetadata.locale, postDateTemplate)}
+                    </time>
+                  </dd>
+                </div>
+              </dl>
+              <PageTitle>{title}</PageTitle>
+            </div>
+          </header>
+
+          <div className="grid-rows-[auto_1fr] divide-y divide-gray-200 pb-8 xl:grid xl:grid-cols-4 xl:gap-x-6 xl:divide-y-0 dark:divide-gray-700">
+            {/* Author */}
+            <dl className="pt-6 pb-10 xl:border-b xl:border-gray-200 xl:pt-11 xl:dark:border-gray-700">
+              <dt className="sr-only">Authors</dt>
+              <dd>
+                <ul className="flex flex-wrap justify-center gap-4 sm:space-x-12 xl:block xl:space-y-8 xl:space-x-0">
+                  {authorDetails.map((author) => (
+                    <li className="flex items-center space-x-2" key={author.name}>
+                      {author.avatar && (
+                        <Image
+                          src={author.avatar}
+                          width={38}
+                          height={38}
+                          alt="avatar"
+                          className="h-10 w-10 rounded-full"
+                        />
+                      )}
+                      <dl className="text-sm leading-5 font-medium whitespace-nowrap">
+                        <dt className="sr-only">Name</dt>
+                        <dd className="text-gray-900 dark:text-gray-100">{author.name}</dd>
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </dl>
+
+            {/* Content */}
+            <div className="divide-y divide-gray-200 xl:col-span-3 xl:row-span-2 dark:divide-gray-700">
+              <div className="prose dark:prose-invert max-w-none pt-10 pb-8">{children}</div>
+
+              {/* Discuss on DEV */}
+              {devUrl && (
+                <div className="pt-6 pb-6 text-sm text-gray-700 dark:text-gray-300">
+                  <Link
+                    href={devUrl}
+                    target="_blank"
+                    rel="nofollow"
+                    className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                  >
+                    Discuss on DEV
+                  </Link>
+                </div>
+              )}
+
+              {/* Comments */}
+              {siteMetadata.comments && (
+                <div
+                  className="pt-6 pb-6 text-center text-gray-700 dark:text-gray-300"
+                  id="comment"
+                >
+                  <Comments slug={slug} />
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <footer>
+              <div className="divide-gray-200 text-sm leading-5 font-medium xl:col-start-1 xl:row-start-2 xl:divide-y dark:divide-gray-700">
+                {tags && (
+                  <div className="py-4 xl:py-8">
+                    <h2 className="text-xs tracking-wide text-gray-500 uppercase dark:text-gray-400">
+                      Tags
+                    </h2>
+                    <div className="flex flex-wrap">
+                      {tags.map((tag) => (
+                        <Tag key={tag} text={tag} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(next || prev) && (
+                  <div className="flex justify-between py-4 xl:block xl:space-y-8 xl:py-8">
+                    {prev && (
+                      <div>
+                        <h2 className="text-xs tracking-wide text-gray-500 uppercase dark:text-gray-400">
+                          Previous Article
+                        </h2>
+                        <Link href={`/${prev.path}`}>{prev.title}</Link>
+                      </div>
+                    )}
+                    {next && (
+                      <div>
+                        <h2 className="text-xs tracking-wide text-gray-500 uppercase dark:text-gray-400">
+                          Next Article
+                        </h2>
+                        <Link href={`/${next.path}`}>{next.title}</Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 xl:pt-8">
+                <Link
+                  href={`/${basePath}`}
+                  className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                >
+                  &larr; Back to the blog
+                </Link>
+              </div>
+            </footer>
+          </div>
+        </div>
+      </article>
+    </SectionContainer>
+  )
+}
+
+
+================================================================================
+FILE: layouts\PostSimple.tsx
+================================================================================
+import { ReactNode } from 'react'
+import { formatDate } from 'pliny/utils/formatDate'
+import { CoreContent } from 'pliny/utils/contentlayer'
+import type { Blog } from 'contentlayer/generated'
+import Comments from '@/components/Comments'
+import Link from '@/components/Link'
+import PageTitle from '@/components/PageTitle'
+import SectionContainer from '@/components/SectionContainer'
+import siteMetadata from '@/data/siteMetadata'
+import ScrollTopAndComment from '@/components/ScrollTopAndComment'
+
+interface LayoutProps {
+  content: CoreContent<Blog>
+  children: ReactNode
+  next?: { path: string; title: string }
+  prev?: { path: string; title: string }
+}
+
+export default function PostLayout({ content, next, prev, children }: LayoutProps) {
+  const { path, slug, date, title } = content
+
+  return (
+    <SectionContainer>
+      <ScrollTopAndComment />
+      <article>
+        <div>
+          <header>
+            <div className="space-y-1 border-b border-gray-200 pb-10 text-center dark:border-gray-700">
+              <dl>
+                <div>
+                  <dt className="sr-only">Published on</dt>
+                  <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
+                    <time dateTime={date}>{formatDate(date, siteMetadata.locale)}</time>
+                  </dd>
+                </div>
+              </dl>
+              <div>
+                <PageTitle>{title}</PageTitle>
+              </div>
+            </div>
+          </header>
+          <div className="grid-rows-[auto_1fr] divide-y divide-gray-200 pb-8 xl:divide-y-0 dark:divide-gray-700">
+            <div className="divide-y divide-gray-200 xl:col-span-3 xl:row-span-2 xl:pb-0 dark:divide-gray-700">
+              <div className="prose dark:prose-invert max-w-none pt-10 pb-8">{children}</div>
+            </div>
+            {siteMetadata.comments && (
+              <div className="pt-6 pb-6 text-center text-gray-700 dark:text-gray-300" id="comment">
+                <Comments slug={slug} />
+              </div>
+            )}
+            <footer>
+              <div className="flex flex-col text-sm font-medium sm:flex-row sm:justify-between sm:text-base">
+                {prev && prev.path && (
+                  <div className="pt-4 xl:pt-8">
+                    <Link
+                      href={`/${prev.path}`}
+                      className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                      aria-label={`Previous post: ${prev.title}`}
+                    >
+                      &larr; {prev.title}
+                    </Link>
+                  </div>
+                )}
+                {next && next.path && (
+                  <div className="pt-4 xl:pt-8">
+                    <Link
+                      href={`/${next.path}`}
+                      className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                      aria-label={`Next post: ${next.title}`}
+                    >
+                      {next.title} &rarr;
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </footer>
+          </div>
+        </div>
+      </article>
+    </SectionContainer>
+  )
+}
+
+
+================================================================================
+FILE: public\search.json
+================================================================================
+[{"title":"PostgreSQL Primary Keys-Why Your UUID Choice Matters","date":"2025-12-23T00:00:00.000Z","tags":["postgresql","database-indexing","performance","backend"],"draft":false,"summary":"How time-based UUIDs help PostgreSQL B-Tree indexes achieve better insert performance, range queries, and predictable pagination.","devUrl":"https://dev.to/mohammad-atif/postgresql-primary-keys-why-your-uuid-choice-matters","type":"Blog","readingTime":{"text":"4 min read","minutes":3.055,"time":183300,"words":611},"slug":"time-based-uuid-btree-indexing","path":"blog/time-based-uuid-btree-indexing","filePath":"blog/time-based-uuid-btree-indexing.mdx","toc":[],"structuredData":{"@context":"https://schema.org","@type":"BlogPosting","headline":"PostgreSQL Primary Keys-Why Your UUID Choice Matters","datePublished":"2025-12-23T00:00:00.000Z","dateModified":"2025-12-23T00:00:00.000Z","description":"How time-based UUIDs help PostgreSQL B-Tree indexes achieve better insert performance, range queries, and predictable pagination.","image":"/static/images/twitter-card.png","url":"https://mohammad-atif.vercel.app/blog/time-based-uuid-btree-indexing"}}]
